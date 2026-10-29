@@ -1,0 +1,33 @@
+name: foodiehub
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # การเชื่อมต่อ API & Real-time Chat
+  http: ^1.6.0
+  dio: ^5.4.0
+  socket_io_client: ^2.0.3
+
+  # State Management & Local Storage
+  provider: ^6.1.1
+  flutter_secure_storage: ^9.0.0 # สำหรับเก็บ JWT Token
+  shared_preferences: ^2.5.6
+
+  # การจัดการสื่อ (รูปภาพ/วิดีโอ)
+  image_picker: ^1.0.7
+  video_player: ^2.8.2
+  chewie: ^1.7.5 # เครื่องเล่นวิดีโอ
+
+  # วันที่และเวลา
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

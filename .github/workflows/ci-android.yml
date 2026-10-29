@@ -1,0 +1,60 @@
+name: Flutter checks and Android test APK
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  flutter-checks-and-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.44.6"
+          cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Require deployed API URL
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+        run: |
+          if [ -z "$API_BASE_URL" ]; then
+            echo "Set the API_BASE_URL repository variable to the deployed HTTPS API URL ending in /api."
+            exit 1
+          fi
+
+      - name: Build debug APK
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+        run: flutter build apk --debug --dart-define=API_BASE_URL="$API_BASE_URL"
+
+      - name: Upload test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-apk-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
