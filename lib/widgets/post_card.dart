@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
+import '../models/app_user.dart';
 import '../models/food_post.dart';
 import '../services/api_service.dart';
+import '../services/chat_service.dart';
 import '../services/post_service.dart';
 import '../theme/app_theme.dart';
 
@@ -11,6 +13,7 @@ class PostCard extends StatefulWidget {
   final String currentUserId;
   final Future<void> Function() onChanged;
   final PostService? postService;
+  final ChatService? chatService;
   final bool interactionsEnabled;
 
   const PostCard({
@@ -20,6 +23,7 @@ class PostCard extends StatefulWidget {
     required this.onChanged,
     this.interactionsEnabled = true,
     this.postService,
+    this.chatService,
   });
 
   @override
@@ -28,7 +32,9 @@ class PostCard extends StatefulWidget {
 
 class _PostCardState extends State<PostCard> {
   late final _postService = widget.postService ?? PostService();
+  late final _chatService = widget.chatService ?? ChatService();
   bool _busy = false;
+  bool _sharing = false;
   bool _reporting = false;
   late bool _following = widget.post.isFollowedByMe;
   late bool _followRequestPending = widget.post.followRequestPending;
@@ -204,6 +210,68 @@ class _PostCardState extends State<PostCard> {
       await widget.onChanged();
     } catch (error) {
       _showMessage('ลบโพสต์ไม่สำเร็จ: $error', isError: true);
+    }
+  }
+
+  Future<void> _sharePost() async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
+    try {
+      final contacts = await _chatService.getContacts();
+      if (!mounted) return;
+      final recipient = await showModalBottomSheet<AppUser>(
+        context: context,
+        isScrollControlled: true,
+        builder: (context) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.65,
+            child: Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'แชร์โพสต์ให้เพื่อน',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
+                ),
+                Expanded(
+                  child: contacts.isEmpty
+                      ? const Center(child: Text('ไม่พบสมาชิก'))
+                      : ListView.builder(
+                          itemCount: contacts.length,
+                          itemBuilder: (context, index) {
+                            final user = contacts[index];
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: AppTheme.primaryColor,
+                                child: Text(
+                                  user.name.isEmpty
+                                      ? '?'
+                                      : user.name.characters.first,
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                              ),
+                              title: Text(user.name),
+                              subtitle: user.username.isEmpty
+                                  ? null
+                                  : Text('@${user.username}'),
+                              onTap: () => Navigator.pop(context, user),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      if (recipient == null || !mounted) return;
+      await _chatService.sharePost(userId: recipient.id, postId: post.id);
+      _showMessage('แชร์โพสต์ให้ ${recipient.name} แล้ว');
+    } catch (error) {
+      _showMessage('แชร์โพสต์ไม่สำเร็จ: $error', isError: true);
+    } finally {
+      if (mounted) setState(() => _sharing = false);
     }
   }
 
@@ -673,6 +741,11 @@ class _PostCardState extends State<PostCard> {
                     tooltip: 'แสดงความคิดเห็น',
                     onPressed: _showComments,
                     icon: const Icon(Icons.mode_comment_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'แชร์โพสต์',
+                    onPressed: _sharing ? null : _sharePost,
+                    icon: const Icon(Icons.share_outlined),
                   ),
                 ],
               ),

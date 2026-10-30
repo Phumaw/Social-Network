@@ -14,16 +14,27 @@ import '../../theme/app_theme.dart';
 
 class DirectChatScreen extends StatefulWidget {
   final AppUser user;
+  final ChatService? chatService;
+  final AuthService? authService;
+  final Future<XFile?> Function()? pickImage;
+  final Future<XFile?> Function()? pickVideo;
 
-  const DirectChatScreen({super.key, required this.user});
+  const DirectChatScreen({
+    super.key,
+    required this.user,
+    this.chatService,
+    this.authService,
+    this.pickImage,
+    this.pickVideo,
+  });
 
   @override
   State<DirectChatScreen> createState() => _DirectChatScreenState();
 }
 
 class _DirectChatScreenState extends State<DirectChatScreen> {
-  final _chatService = ChatService();
-  final _authService = AuthService();
+  late final _chatService = widget.chatService ?? ChatService();
+  late final _authService = widget.authService ?? AuthService();
   final _picker = ImagePicker();
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
@@ -94,15 +105,17 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
       );
       if (mediaType == null) return;
       final media = mediaType == 'video'
-          ? await _picker.pickVideo(
-              source: ImageSource.gallery,
-              maxDuration: const Duration(seconds: 60),
-            )
-          : await _picker.pickImage(
-              source: ImageSource.gallery,
-              imageQuality: 85,
-              maxWidth: 1800,
-            );
+          ? await (widget.pickVideo?.call() ??
+                _picker.pickVideo(
+                  source: ImageSource.gallery,
+                  maxDuration: const Duration(seconds: 60),
+                ))
+          : await (widget.pickImage?.call() ??
+                _picker.pickImage(
+                  source: ImageSource.gallery,
+                  imageQuality: 85,
+                  maxWidth: 1800,
+                ));
       if (media == null) return;
       final bytes = mediaType == 'image' ? await media.readAsBytes() : null;
       if (!mounted) return;
@@ -331,6 +344,24 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (message.sharedPost != null) _buildSharedPostCard(message),
+                if (message.sharedPostUnavailable)
+                  Container(
+                    key: const Key('unavailable-shared-post'),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.raisedSurfaceColor,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.visibility_off_outlined, size: 18),
+                        SizedBox(width: 8),
+                        Text('โพสต์นี้ไม่พร้อมใช้งาน'),
+                      ],
+                    ),
+                  ),
                 if (message.imageUrl.isNotEmpty)
                   if (message.mediaType == 'video')
                     ClipRRect(
@@ -340,18 +371,25 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                       ),
                     )
                   else
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(10),
-                      child: Image.network(
+                    GestureDetector(
+                      key: const Key('chat-image-thumbnail'),
+                      onTap: () => _showImageViewer(
+                        context,
                         ApiService.resolveImageUrl(message.imageUrl),
-                        width: 210,
-                        height: 180,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const SizedBox(
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: Image.network(
+                          ApiService.resolveImageUrl(message.imageUrl),
                           width: 210,
-                          height: 100,
-                          child: Center(
-                            child: Icon(Icons.broken_image_outlined),
+                          height: 180,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => const SizedBox(
+                            width: 210,
+                            height: 100,
+                            child: Center(
+                              child: Icon(Icons.broken_image_outlined),
+                            ),
                           ),
                         ),
                       ),
@@ -361,7 +399,12 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
                     padding: EdgeInsets.only(
                       top: message.imageUrl.isNotEmpty ? 6 : 0,
                     ),
-                    child: Text(message.text),
+                    child: Text(
+                      message.text,
+                      style: TextStyle(
+                        color: isMine ? Colors.white : AppTheme.textDark,
+                      ),
+                    ),
                   ),
               ],
             ),
@@ -370,6 +413,116 @@ class _DirectChatScreenState extends State<DirectChatScreen> {
       },
     );
   }
+
+  Widget _buildSharedPostCard(ChatMessage message) {
+    final post = message.sharedPost!;
+    return Container(
+      key: Key('shared-post-${post.id}'),
+      width: 230,
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppTheme.raisedSurfaceColor,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.article_outlined, size: 16),
+              SizedBox(width: 6),
+              Text(
+                'โพสต์ที่แชร์',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            post.userName,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+          ),
+          if (post.caption.isNotEmpty)
+            Text(
+              post.caption,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13),
+            ),
+          if (post.imageUrl.isNotEmpty && post.mediaType == 'image')
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  ApiService.resolveImageUrl(post.imageUrl),
+                  width: 210,
+                  height: 110,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox(
+                    height: 60,
+                    child: Center(child: Icon(Icons.broken_image_outlined)),
+                  ),
+                ),
+              ),
+            ),
+          if (post.imageUrl.isNotEmpty && post.mediaType == 'video')
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Row(
+                children: [
+                  Icon(Icons.play_circle_outline, size: 18),
+                  SizedBox(width: 4),
+                  Text('วิดีโอในโพสต์'),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+void _showImageViewer(BuildContext context, String imageUrl) {
+  showDialog<void>(
+    context: context,
+    builder: (context) => Dialog.fullscreen(
+      backgroundColor: Colors.black,
+      child: SafeArea(
+        child: Stack(
+          children: [
+            Center(
+              child: InteractiveViewer(
+                minScale: 1,
+                maxScale: 5,
+                child: Image.network(
+                  imageUrl,
+                  key: const Key('chat-image-viewer'),
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) => const Icon(
+                    Icons.broken_image_outlined,
+                    color: Colors.white,
+                    size: 48,
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                tooltip: 'ปิดรูปภาพ',
+                onPressed: () => Navigator.pop(context),
+                color: Colors.white,
+                icon: const Icon(Icons.close),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _ChatVideoPlayer extends StatefulWidget {

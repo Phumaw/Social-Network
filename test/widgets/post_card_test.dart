@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:foodiehub/models/app_user.dart';
 import 'package:foodiehub/models/food_post.dart';
+import 'package:foodiehub/services/chat_service.dart';
 import 'package:foodiehub/services/post_service.dart';
 import 'package:foodiehub/widgets/post_card.dart';
 
@@ -47,6 +49,33 @@ void main() {
     expect(find.byKey(const Key('reaction-Like')), findsNothing);
     expect(find.byTooltip('แสดงความคิดเห็น'), findsNothing);
     expect(find.byTooltip('รายงานโพสต์'), findsNothing);
+  });
+
+  testWidgets('shares a post with a selected chat contact', (tester) async {
+    final service = _FakeChatService();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PostCard(
+            post: _post(),
+            currentUserId: 'viewer',
+            onChanged: () async {},
+            postService: _FakePostService(),
+            chatService: service,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('แชร์โพสต์'));
+    await tester.pumpAndSettle();
+    expect(find.text('แชร์โพสต์ให้เพื่อน'), findsOneWidget);
+    await tester.tap(find.text('นารา'));
+    await tester.pump();
+
+    expect(service.sharedPostId, 'post-1');
+    expect(service.recipientId, 'friend-1');
+    expect(find.text('แชร์โพสต์ให้ นารา แล้ว'), findsOneWidget);
   });
 
   testWidgets('sends dislike reaction to the post service', (tester) async {
@@ -326,5 +355,24 @@ class _FakePostService extends PostService {
   Future<Map<String, dynamic>> unfollowUser(String userId) async {
     unfollowedUserId = userId;
     return {'following': false, 'requestPending': false};
+  }
+}
+
+class _FakeChatService extends ChatService {
+  String? recipientId;
+  String? sharedPostId;
+
+  @override
+  Future<List<AppUser>> getContacts({String query = ''}) async => [
+    const AppUser(id: 'friend-1', name: 'นารา', username: 'nara'),
+  ];
+
+  @override
+  Future<void> sharePost({
+    required String userId,
+    required String postId,
+  }) async {
+    recipientId = userId;
+    sharedPostId = postId;
   }
 }

@@ -1,4 +1,5 @@
 import 'app_user.dart';
+import 'food_post.dart';
 
 class ChatMessage {
   final String id;
@@ -6,6 +7,8 @@ class ChatMessage {
   final String text;
   final String imageUrl;
   final String mediaType;
+  final FoodPost? sharedPost;
+  final bool sharedPostUnavailable;
   final DateTime? createdAt;
 
   const ChatMessage({
@@ -14,6 +17,8 @@ class ChatMessage {
     required this.text,
     required this.imageUrl,
     this.mediaType = '',
+    this.sharedPost,
+    this.sharedPostUnavailable = false,
     this.createdAt,
   });
 
@@ -28,6 +33,10 @@ class ChatMessage {
       text: (json['text'] ?? '').toString(),
       imageUrl: (json['imageUrl'] ?? '').toString(),
       mediaType: (json['mediaType'] ?? '').toString(),
+      sharedPost: json['sharedPost'] is Map<String, dynamic>
+          ? FoodPost.fromJson(json['sharedPost'] as Map<String, dynamic>)
+          : null,
+      sharedPostUnavailable: json['sharedPostUnavailable'] == true,
       createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()),
     );
   }

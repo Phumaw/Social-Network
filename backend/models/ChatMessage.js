@@ -7,6 +7,7 @@ const chatMessageSchema = new mongoose.Schema(
     text: { type: String, default: '', maxlength: 2000 },
     imageUrl: { type: String, default: '' },
     mediaType: { type: String, enum: ['', 'image', 'video'], default: '' },
+    sharedPost: { type: mongoose.Schema.Types.ObjectId, ref: 'Post', default: null },
   },
   { timestamps: true }
 );

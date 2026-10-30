@@ -2,6 +2,9 @@ const mongoose = require('mongoose');
 const ChatMessage = require('../models/ChatMessage');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
+const Post = require('../models/Post');
+const Follow = require('../models/Follow');
+const Community = require('../models/Community');
 const fs = require('fs/promises');
 const path = require('path');
 
@@ -14,6 +17,25 @@ const removeUploadedMedia = async (file) => {
   } catch (error) {
     if (error.code !== 'ENOENT') console.error(`Could not remove chat media: ${error.message}`);
   }
+};
+
+const canViewSharedPost = async (post, userId) => {
+  if (!post) return false;
+  if (post.community) {
+    return Boolean(await Community.exists({
+      _id: post.community,
+      'members.user': userId,
+    }));
+  }
+  const authorId = String(post.user?._id ?? post.user);
+  if (authorId === userId) return true;
+  const author = await User.findById(authorId).select('isPrivate');
+  if (!author) return false;
+  if (!author.isPrivate) return true;
+  return Boolean(await Follow.exists({
+    follower: userId,
+    following: author._id,
+  }));
 };
 
 exports.getContacts = async (req, res) => {
@@ -52,7 +74,7 @@ exports.getConversations = async (req, res) => {
         conversations.set(key, {
           user: otherUser,
           lastMessage: {
-            text: message.text,
+            text: message.text || (message.sharedPost ? 'แชร์โพสต์กับคุณ' : ''),
             imageUrl: message.imageUrl,
             mediaType: message.mediaType,
             from: String(message.from._id),
@@ -86,7 +108,30 @@ exports.getMessages = async (req, res) => {
       .limit(200)
       .populate('from', 'name profileImage')
       .populate('to', 'name profileImage');
-    res.json(messages.reverse());
+    const messagesWithSharedPosts = await Promise.all(
+      messages.reverse().map(async (message) => {
+        const data = message.toObject();
+        const sharedPostId = data.sharedPost ? String(data.sharedPost) : null;
+        if (!sharedPostId) {
+          data.sharedPost = null;
+          data.sharedPostUnavailable = false;
+          return data;
+        }
+        const sharedPost = await Post.findById(sharedPostId).populate(
+          'user',
+          'name profileImage',
+        );
+        if (!(await canViewSharedPost(sharedPost, req.userId))) {
+          data.sharedPost = null;
+          data.sharedPostUnavailable = true;
+          return data;
+        }
+        data.sharedPost = sharedPost.toObject();
+        data.sharedPostUnavailable = false;
+        return data;
+      }),
+    );
+    res.json(messagesWithSharedPosts);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -96,6 +141,9 @@ exports.sendMessage = async (req, res) => {
   try {
     const to = req.params.userId;
     const text = typeof req.body.text === 'string' ? req.body.text.trim() : '';
+    const sharedPostId = typeof req.body.sharedPostId === 'string'
+      ? req.body.sharedPostId.trim()
+      : '';
     if (!mongoose.isValidObjectId(to) || to === req.userId) {
       await removeUploadedMedia(req.file?.filename);
       return res.status(400).json({ message: 'ผู้รับข้อความไม่ถูกต้อง' });
@@ -104,14 +152,29 @@ exports.sendMessage = async (req, res) => {
       await removeUploadedMedia(req.file?.filename);
       return res.status(400).json({ message: 'ข้อความต้องมีความยาวไม่เกิน 2000 ตัวอักษร' });
     }
-    if (!text && !req.file) {
-      return res.status(400).json({ message: 'กรุณาพิมพ์ข้อความหรือเลือกสื่อ' });
+    if (sharedPostId && !mongoose.isValidObjectId(sharedPostId)) {
+      await removeUploadedMedia(req.file?.filename);
+      return res.status(400).json({ message: 'โพสต์ที่แชร์ไม่ถูกต้อง' });
+    }
+    if (!text && !req.file && !sharedPostId) {
+      return res.status(400).json({ message: 'กรุณาพิมพ์ข้อความ เลือกสื่อ หรือแชร์โพสต์' });
     }
 
     const recipient = await User.findById(to).select('_id');
     if (!recipient) {
       await removeUploadedMedia(req.file?.filename);
       return res.status(404).json({ message: 'ไม่พบบัญชีผู้รับ' });
+    }
+    if (sharedPostId) {
+      const sharedPost = await Post.findById(sharedPostId);
+      if (!sharedPost) {
+        await removeUploadedMedia(req.file?.filename);
+        return res.status(404).json({ message: 'ไม่พบโพสต์ที่แชร์' });
+      }
+      if (!(await canViewSharedPost(sharedPost, req.userId))) {
+        await removeUploadedMedia(req.file?.filename);
+        return res.status(403).json({ message: 'คุณไม่มีสิทธิ์แชร์โพสต์นี้' });
+      }
     }
     const message = await ChatMessage.create({
       from: req.userId,
@@ -121,11 +184,16 @@ exports.sendMessage = async (req, res) => {
       mediaType: req.file
         ? (req.file.mimetype.startsWith('video/') ? 'video' : 'image')
         : '',
+      sharedPost: sharedPostId || null,
     });
     await Notification.create({
       recipient: to,
       actor: req.userId,
-      message: text || (message.mediaType === 'video' ? 'ส่งวิดีโอถึงคุณ' : 'ส่งรูปภาพถึงคุณ'),
+      message: text || (
+        message.mediaType
+          ? (message.mediaType === 'video' ? 'ส่งวิดีโอถึงคุณ' : 'ส่งรูปภาพถึงคุณ')
+          : 'แชร์โพสต์กับคุณ'
+      ),
     });
     await message.populate([
       { path: 'from', select: 'name profileImage' },

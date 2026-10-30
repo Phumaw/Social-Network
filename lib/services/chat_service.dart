@@ -48,14 +48,25 @@ class ChatService {
     required String text,
     required XFile? media,
     required String mediaType,
+    String? sharedPostId,
   }) async {
     await ApiService.uploadChatMessage(
       userId: userId,
       text: text,
       media: media,
       mediaType: mediaType,
+      sharedPostId: sharedPostId,
     );
   }
+
+  Future<void> sharePost({required String userId, required String postId}) =>
+      sendMessage(
+        userId: userId,
+        text: '',
+        media: null,
+        mediaType: '',
+        sharedPostId: postId,
+      );
 
   Future<List<AppNotification>> getNotifications() async {
     final response = await ApiService.get('/chat/notifications');

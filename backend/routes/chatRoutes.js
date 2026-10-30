@@ -30,7 +30,7 @@ const upload = multer({
   storage: multer.diskStorage({
     destination: uploadDirectory,
     filename: (req, file, callback) => {
-      callback(null, `${crypto.randomUUID()}${imageExtensions[file.mimetype] || ''}`);
+      callback(null, `${crypto.randomUUID()}${mediaExtensions[file.mimetype] || ''}`);
     },
   }),
   limits: { fileSize: 100 * 1024 * 1024 },

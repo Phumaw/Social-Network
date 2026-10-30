@@ -209,6 +209,7 @@ class ApiService {
     required String text,
     XFile? media,
     required String mediaType,
+    String? sharedPostId,
   }) async {
     final request = http.MultipartRequest(
       'POST',
@@ -216,6 +217,7 @@ class ApiService {
     );
     request.headers.addAll(await _headers(authenticated: true));
     request.fields['text'] = text;
+    if (sharedPostId != null) request.fields['sharedPostId'] = sharedPostId;
     if (media != null) {
       request.files.add(
         http.MultipartFile.fromBytes(
